@@ -44,6 +44,8 @@ def main() -> None:
 
     sorted_interactions = sort_interactions_by_time(interactions)
     train, val, test = temporal_split(sorted_interactions)
+    timestamp_series = sorted_interactions["timestamp"]
+    timestamp_datetimes = pd.to_datetime(timestamp_series, unit="s")
 
     print("Graph summary:")
     print(describe_bipartite_graph(sorted_interactions))
@@ -62,10 +64,27 @@ def main() -> None:
     print("Time range:")
     print(
         {
-            "min_timestamp": int(sorted_interactions["timestamp"].min()),
-            "max_timestamp": int(sorted_interactions["timestamp"].max()),
+            "min_timestamp": int(timestamp_series.min()),
+            "max_timestamp": int(timestamp_series.max()),
+            "start_date": str(timestamp_datetimes.min()),
+            "end_date": str(timestamp_datetimes.max()),
+            "span_days": int((timestamp_datetimes.max() - timestamp_datetimes.min()).days),
         }
     )
+    print()
+
+    print("Timestamp quantiles:")
+    print(timestamp_series.quantile([0.25, 0.5, 0.75]).astype(int))
+    print()
+
+    interactions_per_month = timestamp_datetimes.dt.to_period("M").value_counts().sort_index()
+    print("Interactions per month:")
+    print(interactions_per_month)
+    print()
+
+    interactions_per_day = timestamp_datetimes.dt.date.value_counts().sort_index()
+    print("Busiest days:")
+    print(interactions_per_day.sort_values(ascending=False).head(5))
     print()
 
     print("Most popular items in train split:")
