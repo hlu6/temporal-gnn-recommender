@@ -3,8 +3,14 @@ from pathlib import Path
 import pandas as pd
 
 from src.data_loader import load_movielens_100k
-from src.baselines import most_popular_items
-from src.graph_builder import describe_bipartite_graph
+from src.baselines import most_popular_items, recommend_popular_items_for_user
+from src.evaluate import ndcg_at_k, recall_at_k
+from src.graph_builder import (
+    build_bipartite_edges,
+    build_id_mappings,
+    describe_bipartite_graph,
+    describe_mapped_graph,
+)
 from src.preprocess import sort_interactions_by_time, temporal_split
 
 
@@ -51,6 +57,24 @@ def main() -> None:
     print(describe_bipartite_graph(sorted_interactions))
     print()
 
+    user_to_index, item_to_index = build_id_mappings(train)
+    train_edges = build_bipartite_edges(train, user_to_index, item_to_index)
+
+    print("Mapped bipartite graph summary from train split:")
+    print(
+        {
+            "num_user_nodes": len(user_to_index),
+            "num_item_nodes": len(item_to_index),
+            "num_total_nodes": len(user_to_index) + len(item_to_index),
+            **describe_mapped_graph(train_edges),
+        }
+    )
+    print()
+
+    print("First five mapped train edges:")
+    print(train_edges.head())
+    print()
+
     print("Split sizes:")
     print(
         {
@@ -89,6 +113,19 @@ def main() -> None:
 
     print("Most popular items in train split:")
     print(most_popular_items(train, top_k=3))
+    print()
+
+    top_k = 10
+    test_users = sorted(test["user_id"].unique())
+    popular_recommendations = {
+        user_id: recommend_popular_items_for_user(train, user_id, top_k=top_k)
+        for user_id in test_users
+    }
+
+    print(f"Cold-start-safe popularity baseline Recall@{top_k}:")
+    print(f"{recall_at_k(test, popular_recommendations, k=top_k):.4f}")
+    print(f"Cold-start-safe popularity baseline NDCG@{top_k}:")
+    print(f"{ndcg_at_k(test, popular_recommendations, k=top_k):.4f}")
 
 
 if __name__ == "__main__":
