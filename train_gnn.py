@@ -30,6 +30,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=2048)
     parser.add_argument("--top-k", type=int, default=10)
     parser.add_argument(
+        "--min-rating",
+        type=float,
+        default=4.0,
+        help="Minimum rating kept across train, validation, and test interactions.",
+    )
+    parser.add_argument(
         "--edge-weighting",
         choices=["uniform", "rating", "time", "rating_time"],
         default="rating_time",
@@ -113,8 +119,16 @@ def main() -> None:
         raise FileNotFoundError("Expected MovieLens data at data/raw/u.data")
 
     interactions = load_movielens_100k(dataset_path)
-    sorted_interactions = sort_interactions_by_time(interactions)
+    filtered_interactions = interactions[interactions["rating"] >= args.min_rating].reset_index(drop=True)
+
+    if filtered_interactions.empty:
+        raise ValueError("No interactions remain after applying --min-rating")
+
+    sorted_interactions = sort_interactions_by_time(filtered_interactions)
     train, val, test = temporal_split(sorted_interactions)
+
+    if train.empty or val.empty or test.empty:
+        raise ValueError("Train, validation, and test splits must all be non-empty")
 
     user_to_index, item_to_index = build_id_mappings(train)
     train_edges = build_bipartite_edges(
@@ -156,6 +170,9 @@ def main() -> None:
         {
             "num_nodes": num_nodes,
             "num_train_edges": len(train_edges),
+            "num_original_interactions": len(interactions),
+            "num_filtered_interactions": len(filtered_interactions),
+            "min_rating": args.min_rating,
             "epochs": args.epochs,
             "embedding_dim": args.embedding_dim,
             "num_layers": args.num_layers,
@@ -300,6 +317,12 @@ def main() -> None:
             "lr": args.lr,
             "weight_decay": args.weight_decay,
             "batch_size": args.batch_size,
+            "min_rating": args.min_rating,
+            "num_original_interactions": len(interactions),
+            "num_filtered_interactions": len(filtered_interactions),
+            "num_train_interactions": len(train),
+            "num_val_interactions": len(val),
+            "num_test_interactions": len(test),
             "edge_weighting": args.edge_weighting,
             "num_month_buckets": int(train_edges["month_bucket"].nunique()),
             "best_epoch": best_epoch,

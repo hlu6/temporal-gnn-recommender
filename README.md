@@ -79,6 +79,12 @@ python train_gnn.py --edge-weighting time
 python train_gnn.py --edge-weighting rating_time
 ```
 
+By default, the recommender keeps ratings `>= 4` so the task is to recommend future movies that users liked. You can change the threshold with:
+
+```bash
+python train_gnn.py --min-rating 4
+```
+
 Each run appends metrics to `outputs/gnn_results.csv` for comparison.
 
 ## First milestone
