@@ -87,6 +87,35 @@ python train_gnn.py --min-rating 4
 
 Each run appends metrics to `outputs/gnn_results.csv` for comparison.
 
+## GraphSAGE comparison
+
+The repo also includes a small GraphSAGE-style recommender using weighted mean neighborhood aggregation:
+
+```bash
+python train_graphsage.py --epochs 10 --embedding-dim 16 --num-layers 2 --lr 0.01 --edge-weighting rating_time --min-rating 4
+```
+
+This GraphSAGE version uses:
+- learned node ID embeddings
+- node-type indicators for user vs item
+- simple node statistics such as interaction count, average rating, and average recency
+
+GraphSAGE experiment runs are saved to `outputs/graphsage_results.csv`.
+
+## Classic GCN comparison
+
+The repo also includes a simpler classic GCN-style recommender that uses:
+- learned node ID embeddings
+- fixed node features
+- normalized graph propagation
+- linear layers + ReLU
+
+```bash
+python train_gcn.py --epochs 10 --embedding-dim 16 --num-layers 2 --lr 0.01 --edge-weighting rating_time --min-rating 4 --similarity-top-k 5 --min-similarity 0.1
+```
+
+GCN experiment runs are saved to `outputs/gcn_results.csv`.
+
 ## First milestone
 
 The first milestone is getting a clean preprocessing pipeline working for MovieLens 100K:

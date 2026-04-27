@@ -37,6 +37,36 @@ def build_normalized_adjacency(
     return adjacency.to(device)
 
 
+def build_mean_adjacency(
+    edges: pd.DataFrame,
+    num_nodes: int,
+    device: torch.device,
+) -> torch.Tensor:
+    """Build a row-normalized sparse adjacency for GraphSAGE-style mean aggregation."""
+    source = torch.tensor(edges["source_node"].to_numpy(), dtype=torch.long)
+    target = torch.tensor(edges["target_node"].to_numpy(), dtype=torch.long)
+    edge_weights = torch.tensor(
+        edges.get("edge_weight", pd.Series(1.0, index=edges.index)).to_numpy(),
+        dtype=torch.float32,
+    )
+
+    row = torch.cat([source, target])
+    col = torch.cat([target, source])
+    values = torch.cat([edge_weights, edge_weights])
+
+    degree = torch.zeros(num_nodes, dtype=torch.float32)
+    degree.scatter_add_(0, row, values)
+    mean_values = values / degree[row].clamp(min=1e-8)
+
+    adjacency = torch.sparse_coo_tensor(
+        torch.stack([row, col]),
+        mean_values,
+        size=(num_nodes, num_nodes),
+    ).coalesce()
+
+    return adjacency.to(device)
+
+
 def build_positive_pairs(edges: pd.DataFrame) -> tuple[torch.Tensor, torch.Tensor]:
     """Return user and item node tensors for observed train interactions."""
     users = torch.tensor(edges["source_node"].to_numpy(), dtype=torch.long)
@@ -62,11 +92,13 @@ def bpr_loss(positive_scores: torch.Tensor, negative_scores: torch.Tensor) -> to
 def recommend_with_model(
     model,
     adjacency: torch.Tensor,
+    node_features: torch.Tensor | None,
     user_ids: list[int],
     user_to_index: dict[int, int],
     item_to_index: dict[int, int],
     train_interactions: pd.DataFrame,
     top_k: int = 10,
+    exclude_seen: bool = True,
 ) -> dict[int, list[int]]:
     """Create top-k item recommendations for users the model has seen."""
     model.eval()
@@ -82,7 +114,10 @@ def recommend_with_model(
     recommendations: dict[int, list[int]] = {}
 
     with torch.no_grad():
-        node_embeddings = model(adjacency)
+        if node_features is None:
+            node_embeddings = model(adjacency)
+        else:
+            node_embeddings = model(adjacency, node_features)
         item_embeddings = node_embeddings[item_indices]
 
         for user_id in user_ids:
@@ -93,10 +128,11 @@ def recommend_with_model(
             user_node = torch.tensor(user_to_index[user_id], dtype=torch.long, device=adjacency.device)
             scores = item_embeddings @ node_embeddings[user_node]
 
-            seen_items = user_history.get(user_id, set())
-            for item_id in seen_items:
-                if item_id in item_to_index:
-                    scores[item_to_index[item_id]] = -torch.inf
+            if exclude_seen:
+                seen_items = user_history.get(user_id, set())
+                for item_id in seen_items:
+                    if item_id in item_to_index:
+                        scores[item_to_index[item_id]] = -torch.inf
 
             top_positions = torch.topk(scores, k=min(top_k, len(scores))).indices.tolist()
             recommendations[user_id] = [index_to_item[position] for position in top_positions]
